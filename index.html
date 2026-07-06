@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Image Widget</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
+  }
+  #stage {
+    width: 100%; height: 100%;
+    display: flex; align-items: center; justify-content: center;
+    position: relative;
+  }
+
+  /* 위젯 이미지 */
+  #widgetImg {
+    max-width: 100%;
+    max-height: 100%;
+    display: block;
+    cursor: pointer;
+    transition: transform 0.3s ease-out;
+    transform-origin: center center;
+    -webkit-user-drag: none;
+    user-select: none;
+  }
+  #widgetImg.hoverable:hover {
+    transform: scale(1.06);
+  }
+
+  /* 오른쪽 상단 숨김 핫스팟 (설정 버튼을 부르는 영역) */
+  #hotspot {
+    position: absolute;
+    top: 0; right: 0;
+    width: 44px; height: 44px;
+    z-index: 20;
+    cursor: default;
+  }
+
+  /* 설정(톱니) 버튼 - 기본 숨김 */
+  #gearBtn {
+    position: absolute;
+    top: 6px; right: 6px;
+    width: 28px; height: 28px;
+    border: none; border-radius: 50%;
+    background: rgba(0,0,0,0.55);
+    color: #fff;
+    font-size: 15px; line-height: 28px; text-align: center;
+    cursor: pointer;
+    z-index: 21;
+    display: none;
+    padding: 0;
+    transition: background 0.15s;
+  }
+  #gearBtn:hover { background: rgba(0,0,0,0.8); }
+  #gearBtn.show { display: block; }
+
+  /* 상태 텍스트 (로딩/에러) */
+  #msg {
+    position: absolute;
+    color: #888; font-size: 13px;
+    text-align: center; padding: 10px;
+  }
+
+  /* URL 편집 모달 */
+  #modal {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 100;
+  }
+  #modal.show { display: flex; }
+  .modal-box {
+    background: #fff; border-radius: 12px;
+    padding: 20px; width: min(320px, 88vw);
+    box-shadow: 0 10px 40px rgba(0,0,0,0.25);
+  }
+  .modal-box h3 { font-size: 15px; margin-bottom: 12px; color: #222; }
+  .modal-box input {
+    width: 100%; padding: 9px 10px;
+    border: 1px solid #ccc; border-radius: 8px;
+    font-size: 13px; margin-bottom: 6px;
+  }
+  .modal-box input:focus { outline: none; border-color: #4a90e2; }
+  .modal-hint { font-size: 11px; color: #999; margin-bottom: 14px; min-height: 14px; }
+  .modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .modal-actions button {
+    padding: 8px 14px; border: none; border-radius: 8px;
+    font-size: 13px; cursor: pointer;
+  }
+  .btn-cancel { background: #eee; color: #555; }
+  .btn-save { background: #4a90e2; color: #fff; }
+  .btn-save:disabled { background: #a9c9ec; cursor: default; }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <div id="msg">불러오는 중…</div>
+    <img id="widgetImg" alt="" style="display:none;">
+    <div id="hotspot" title="설정"></div>
+    <button id="gearBtn" title="설정">⚙</button>
+  </div>
+
+  <div id="modal">
+    <div class="modal-box">
+      <h3>링크 URL 변경</h3>
+      <input id="urlInput" type="text" placeholder="https://example.com" autocomplete="off">
+      <div class="modal-hint" id="modalHint"></div>
+      <div class="modal-actions">
+        <button class="btn-cancel" id="btnCancel">취소</button>
+        <button class="btn-save" id="btnSave">저장</button>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ===== 설정 (레포 정보) ===== */
+const OWNER  = 'kjm9954';
+const REPO   = 'image-widget';
+const BRANCH = 'main';
+const API    = 'https://api.github.com';
+
+/* ===== 상태 ===== */
+const params = new URLSearchParams(location.search);
+const WID = params.get('id');
+let widgetData = null;   // 현재 위젯 { image, link }
+let allData = null;      // widgets.json 전체
+let jsonSha = null;      // 저장 시 사용할 sha
+
+const $img  = document.getElementById('widgetImg');
+const $msg  = document.getElementById('msg');
+const $gear = document.getElementById('gearBtn');
+const $hot  = document.getElementById('hotspot');
+const $modal= document.getElementById('modal');
+const $url  = document.getElementById('urlInput');
+const $hint = document.getElementById('modalHint');
+const $save = document.getElementById('btnSave');
+
+/* ===== 유틸 ===== */
+function b64ToUtf8(b64){ return decodeURIComponent(escape(atob(b64.replace(/\n/g,'')))); }
+function utf8ToB64(str){ return btoa(unescape(encodeURIComponent(str))); }
+function getToken(){ return localStorage.getItem('gh_pat') || ''; }
+function setToken(t){ localStorage.setItem('gh_pat', t); }
+function authHeaders(){
+  return { 'Authorization': 'token ' + getToken(), 'Accept': 'application/vnd.github+json' };
+}
+
+/* ===== 위젯 로드 ===== */
+async function loadWidget(){
+  if(!WID){ showMsg('위젯 id가 없습니다. (?id=... 필요)'); return; }
+  try {
+    const res = await fetch('widgets.json?t=' + Date.now(), { cache: 'no-store' });
+    if(!res.ok) throw new Error('widgets.json ' + res.status);
+    allData = await res.json();
+    widgetData = (allData.widgets || {})[WID];
+    if(!widgetData){ showMsg('해당 id의 위젯을 찾을 수 없습니다: ' + WID); return; }
+    renderImage();
+  } catch(e){
+    showMsg('로드 실패: ' + e.message);
+  }
+}
+
+function renderImage(){
+  $msg.style.display = 'none';
+  $img.src = widgetData.image + '?v=' + Date.now();
+  $img.style.display = 'block';
+  $img.classList.add('hoverable');
+}
+
+function showMsg(t){
+  $msg.textContent = t;
+  $msg.style.display = 'block';
+  $img.style.display = 'none';
+}
+
+/* ===== 클릭: 링크 이동 ===== */
+$img.addEventListener('click', () => {
+  const link = widgetData && widgetData.link;
+  if(link) window.open(link, '_blank', 'noopener');
+});
+
+/* ===== 숨김 설정 버튼 로직 ===== */
+$hot.addEventListener('click', (e) => {
+  e.stopPropagation();
+  $gear.classList.toggle('show');
+});
+$gear.addEventListener('click', (e) => {
+  e.stopPropagation();
+  openModal();
+});
+// 바깥 클릭 시 톱니 숨김
+document.addEventListener('click', (e) => {
+  if(e.target !== $hot && e.target !== $gear && !$modal.contains(e.target)){
+    $gear.classList.remove('show');
+  }
+});
+
+/* ===== 모달 ===== */
+function openModal(){
+  $url.value = (widgetData && widgetData.link) || '';
+  $hint.textContent = '';
+  $hint.style.color = '#999';
+  $save.disabled = false;
+  $modal.classList.add('show');
+  $url.focus();
+}
+function closeModal(){ $modal.classList.remove('show'); }
+
+document.getElementById('btnCancel').addEventListener('click', closeModal);
+$modal.addEventListener('click', (e) => { if(e.target === $modal) closeModal(); });
+
+$save.addEventListener('click', saveLink);
+
+async function saveLink(){
+  const newLink = $url.value.trim();
+  if(!newLink){ $hint.style.color='#e05a5a'; $hint.textContent='URL을 입력하세요.'; return; }
+
+  // 토큰 확인
+  if(!getToken()){
+    const t = prompt('GitHub Personal Access Token을 입력하세요.\n(repo 권한 필요, 이 기기에만 저장됩니다)');
+    if(!t){ return; }
+    setToken(t.trim());
+  }
+
+  $save.disabled = true;
+  $hint.style.color = '#999';
+  $hint.textContent = '저장 중…';
+
+  try {
+    // 최신 widgets.json + sha 조회 (API)
+    const getRes = await fetch(`${API}/repos/${OWNER}/${REPO}/contents/widgets.json?ref=${BRANCH}`, { headers: authHeaders() });
+    if(getRes.status === 401){ localStorage.removeItem('gh_pat'); throw new Error('토큰이 유효하지 않습니다. 다시 시도하세요.'); }
+    if(!getRes.ok) throw new Error('조회 실패 ' + getRes.status);
+    const cur = await getRes.json();
+    const data = JSON.parse(b64ToUtf8(cur.content));
+    if(!data.widgets || !data.widgets[WID]) throw new Error('위젯 정보를 찾을 수 없습니다.');
+
+    data.widgets[WID].link = newLink;
+
+    const putRes = await fetch(`${API}/repos/${OWNER}/${REPO}/contents/widgets.json`, {
+      method: 'PUT',
+      headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: `update link for ${WID}`,
+        content: utf8ToB64(JSON.stringify(data, null, 2)),
+        sha: cur.sha,
+        branch: BRANCH
+      })
+    });
+    if(!putRes.ok){ const t = await putRes.text(); throw new Error('저장 실패 ' + putRes.status + ' ' + t); }
+
+    widgetData.link = newLink;
+    $hint.style.color = '#3aa76d';
+    $hint.textContent = '저장 완료! 반영까지 최대 1분 걸릴 수 있어요.';
+    setTimeout(() => { closeModal(); $gear.classList.remove('show'); }, 1400);
+  } catch(e){
+    $hint.style.color = '#e05a5a';
+    $hint.textContent = e.message;
+    $save.disabled = false;
+  }
+}
+
+loadWidget();
+</script>
+</body>
+</html>

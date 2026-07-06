@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>이미지 위젯 관리</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Malgun Gothic", sans-serif;
+    background: #f4f5f7; color: #222;
+    padding: 24px; line-height: 1.5;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; }
+  h1 { font-size: 20px; margin-bottom: 4px; }
+  .sub { font-size: 13px; color: #888; margin-bottom: 20px; }
+
+  .card {
+    background: #fff; border-radius: 14px;
+    padding: 20px; margin-bottom: 18px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .card h2 { font-size: 15px; margin-bottom: 12px; }
+
+  /* 토큰 영역 */
+  .token-row { display: flex; gap: 8px; align-items: center; }
+  .token-row input { flex: 1; }
+  .token-status { font-size: 12px; color: #3aa76d; }
+
+  input[type=text], input[type=password], input[type=url] {
+    width: 100%; padding: 10px 12px;
+    border: 1px solid #d5d7db; border-radius: 9px;
+    font-size: 13px;
+  }
+  input:focus { outline: none; border-color: #4a90e2; }
+  label { display: block; font-size: 12px; color: #666; margin: 12px 0 5px; }
+
+  /* 드롭존 */
+  #drop {
+    border: 2px dashed #c5cad1; border-radius: 12px;
+    padding: 28px 16px; text-align: center;
+    color: #999; font-size: 13px; cursor: pointer;
+    transition: all 0.15s; background: #fafbfc;
+  }
+  #drop.drag { border-color: #4a90e2; background: #eef5fe; color: #4a90e2; }
+  #drop.has { padding: 14px; }
+
+  /* 미리보기 (hover 확대 데모) */
+  .preview-box {
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px; background: #f0f1f3; border-radius: 10px;
+    margin-top: 12px; overflow: hidden;
+  }
+  .preview-box img {
+    max-width: 100%; max-height: 200px; display: block;
+    transition: transform 0.3s ease-out; cursor: pointer;
+  }
+  .preview-box img:hover { transform: scale(1.06); }
+  .preview-note { font-size: 11px; color: #aaa; text-align: center; margin-top: 6px; }
+
+  button.primary {
+    width: 100%; padding: 12px; margin-top: 16px;
+    background: #4a90e2; color: #fff; border: none;
+    border-radius: 9px; font-size: 14px; font-weight: 600; cursor: pointer;
+    transition: background 0.15s;
+  }
+  button.primary:hover { background: #3a7bc8; }
+  button.primary:disabled { background: #a9c9ec; cursor: default; }
+
+  .status { font-size: 13px; margin-top: 12px; min-height: 18px; }
+  .status.ok { color: #3aa76d; }
+  .status.err { color: #e05a5a; }
+
+  /* 결과 임베드 URL */
+  .result {
+    margin-top: 14px; padding: 12px;
+    background: #eef5fe; border-radius: 9px; display: none;
+  }
+  .result.show { display: block; }
+  .result code {
+    display: block; font-size: 12px; word-break: break-all;
+    background: #fff; padding: 8px; border-radius: 6px; margin: 6px 0;
+    border: 1px solid #d5e3f7;
+  }
+  .mini-btn {
+    padding: 6px 12px; font-size: 12px; border: none; border-radius: 6px;
+    background: #4a90e2; color: #fff; cursor: pointer;
+  }
+
+  /* 위젯 목록 */
+  .widget-item {
+    display: flex; align-items: center; gap: 12px;
+    padding: 10px 0; border-bottom: 1px solid #eee;
+  }
+  .widget-item:last-child { border-bottom: none; }
+  .widget-item img {
+    width: 48px; height: 48px; object-fit: cover;
+    border-radius: 8px; background: #f0f1f3; flex-shrink: 0;
+  }
+  .widget-item .info { flex: 1; min-width: 0; }
+  .widget-item .wid { font-size: 12px; font-weight: 600; }
+  .widget-item .wlink { font-size: 11px; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .widget-item .acts { display: flex; gap: 6px; flex-shrink: 0; }
+  .widget-item .acts button {
+    padding: 5px 9px; font-size: 11px; border: none; border-radius: 6px; cursor: pointer;
+  }
+  .btn-copy { background: #e8eef5; color: #4a6a8a; }
+  .btn-del  { background: #fdeaea; color: #d05555; }
+  .empty { font-size: 13px; color: #aaa; text-align: center; padding: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🖼️ 이미지 위젯 관리</h1>
+  <div class="sub">이미지를 올리면 노션에 임베드할 위젯 URL이 만들어져요.</div>
+
+  <!-- 토큰 -->
+  <div class="card">
+    <h2>1. GitHub 토큰</h2>
+    <div class="token-row">
+      <input id="tokenInput" type="password" placeholder="Personal Access Token (repo 권한)">
+      <button class="mini-btn" id="tokenSave">저장</button>
+    </div>
+    <div class="token-status" id="tokenStatus"></div>
+  </div>
+
+  <!-- 업로드 -->
+  <div class="card">
+    <h2>2. 이미지 올리기</h2>
+    <div id="drop">여기로 이미지를 끌어다 놓거나 클릭해서 선택</div>
+    <input id="fileInput" type="file" accept="image/*" hidden>
+
+    <div id="previewWrap" style="display:none;">
+      <div class="preview-box"><img id="preview" alt=""></div>
+      <div class="preview-note">↑ 마우스를 올리면 실제 위젯처럼 확대돼요</div>
+    </div>
+
+    <label for="linkInput">클릭 시 이동할 링크 URL</label>
+    <input id="linkInput" type="url" placeholder="https://example.com">
+
+    <button class="primary" id="uploadBtn" disabled>GitHub에 올리기</button>
+    <div class="status" id="status"></div>
+
+    <div class="result" id="result">
+      <div style="font-size:12px;font-weight:600;">✅ 노션에 붙여넣을 임베드 URL</div>
+      <code id="embedUrl"></code>
+      <button class="mini-btn" id="copyBtn">URL 복사</button>
+    </div>
+  </div>
+
+  <!-- 목록 -->
+  <div class="card">
+    <h2>3. 만든 위젯 목록</h2>
+    <div id="widgetList"><div class="empty">불러오는 중…</div></div>
+  </div>
+</div>
+
+<script>
+/* ===== 설정 ===== */
+const OWNER  = 'kjm9954';
+const REPO   = 'image-widget';
+const BRANCH = 'main';
+const API    = 'https://api.github.com';
+const PAGES  = `https://${OWNER}.github.io/${REPO}`;
+
+/* ===== 유틸 ===== */
+function getToken(){ return localStorage.getItem('gh_pat') || ''; }
+function setToken(t){ localStorage.setItem('gh_pat', t); }
+function authHeaders(){ return { 'Authorization': 'token ' + getToken(), 'Accept': 'application/vnd.github+json' }; }
+function b64ToUtf8(b64){ return decodeURIComponent(escape(atob(b64.replace(/\n/g,'')))); }
+function utf8ToB64(str){ return btoa(unescape(encodeURIComponent(str))); }
+function fileToB64(file){
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = rej;
+    r.readAsDataURL(file);
+  });
+}
+
+/* ===== GitHub API ===== */
+async function ghGetFile(path){
+  const r = await fetch(`${API}/repos/${OWNER}/${REPO}/contents/${path}?ref=${BRANCH}`, { headers: authHeaders() });
+  if(r.status === 404) return null;
+  if(r.status === 401){ localStorage.removeItem('gh_pat'); throw new Error('토큰이 유효하지 않습니다.'); }
+  if(!r.ok) throw new Error('조회 실패 ' + r.status);
+  return r.json();
+}
+async function ghPut(path, contentB64, message, sha){
+  const body = { message, content: contentB64, branch: BRANCH };
+  if(sha) body.sha = sha;
+  const r = await fetch(`${API}/repos/${OWNER}/${REPO}/contents/${path}`, {
+    method: 'PUT', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if(!r.ok){ throw new Error('업로드 실패 ' + r.status + ' ' + (await r.text())); }
+  return r.json();
+}
+async function ghDelete(path, sha, message){
+  const r = await fetch(`${API}/repos/${OWNER}/${REPO}/contents/${path}`, {
+    method: 'DELETE', headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, sha, branch: BRANCH })
+  });
+  if(!r.ok) throw new Error('삭제 실패 ' + r.status);
+  return r.json();
+}
+async function loadWidgetsJson(){
+  const f = await ghGetFile('widgets.json');
+  if(!f) return { data: { widgets: {} }, sha: null };
+  return { data: JSON.parse(b64ToUtf8(f.content)), sha: f.sha };
+}
+
+/* ===== 토큰 UI ===== */
+const $token = document.getElementById('tokenInput');
+const $tokenStatus = document.getElementById('tokenStatus');
+function refreshTokenStatus(){
+  if(getToken()){ $tokenStatus.textContent = '✅ 토큰 저장됨 (이 기기에만)'; $token.placeholder = '••••• 저장됨 (변경하려면 새로 입력)'; }
+  else { $tokenStatus.textContent = '토큰이 필요합니다.'; }
+}
+document.getElementById('tokenSave').addEventListener('click', () => {
+  const t = $token.value.trim();
+  if(!t){ $tokenStatus.textContent = '토큰을 입력하세요.'; return; }
+  setToken(t); $token.value = '';
+  refreshTokenStatus(); loadList();
+});
+refreshTokenStatus();
+
+/* ===== 파일 선택/드롭 ===== */
+const $drop = document.getElementById('drop');
+const $file = document.getElementById('fileInput');
+const $previewWrap = document.getElementById('previewWrap');
+const $preview = document.getElementById('preview');
+const $upload = document.getElementById('uploadBtn');
+let selectedFile = null;
+
+$drop.addEventListener('click', () => $file.click());
+$file.addEventListener('change', () => { if($file.files[0]) setFile($file.files[0]); });
+$drop.addEventListener('dragover', (e) => { e.preventDefault(); $drop.classList.add('drag'); });
+$drop.addEventListener('dragleave', () => $drop.classList.remove('drag'));
+$drop.addEventListener('drop', (e) => {
+  e.preventDefault(); $drop.classList.remove('drag');
+  if(e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0]);
+});
+function setFile(f){
+  if(!f.type.startsWith('image/')){ alert('이미지 파일만 가능합니다.'); return; }
+  selectedFile = f;
+  $drop.classList.add('has');
+  $drop.textContent = '📎 ' + f.name + ' (다시 클릭하면 변경)';
+  const r = new FileReader();
+  r.onload = () => { $preview.src = r.result; $previewWrap.style.display = 'block'; };
+  r.readAsDataURL(f);
+  $upload.disabled = false;
+}
+
+/* ===== 업로드 ===== */
+const $status = document.getElementById('status');
+const $result = document.getElementById('result');
+const $embed = document.getElementById('embedUrl');
+const $link = document.getElementById('linkInput');
+
+$upload.addEventListener('click', async () => {
+  if(!getToken()){ setStatus('먼저 GitHub 토큰을 저장하세요.', 'err'); return; }
+  if(!selectedFile){ setStatus('이미지를 선택하세요.', 'err'); return; }
+  const link = $link.value.trim();
+  if(!link){ setStatus('링크 URL을 입력하세요.', 'err'); return; }
+
+  $upload.disabled = true;
+  setStatus('업로드 중… (이미지 → widgets.json 순서로 커밋)', '');
+
+  try {
+    const b64 = await fileToB64(selectedFile);
+    const ext = (selectedFile.name.split('.').pop() || 'png').toLowerCase().replace(/[^a-z0-9]/g,'') || 'png';
+    const id = 'w' + Date.now().toString(36);
+    const imgPath = `images/${id}.${ext}`;
+
+    await ghPut(imgPath, b64, `add image ${imgPath}`);
+
+    const { data, sha } = await loadWidgetsJson();
+    if(!data.widgets) data.widgets = {};
+    data.widgets[id] = { image: imgPath, link: link };
+    await ghPut('widgets.json', utf8ToB64(JSON.stringify(data, null, 2)), `add widget ${id}`, sha);
+
+    const embedUrl = `${PAGES}/index.html?id=${id}`;
+    $embed.textContent = embedUrl;
+    $result.classList.add('show');
+    setStatus('✅ 완료! 아래 URL을 노션에 임베드하세요. (Pages 반영까지 최대 1분)', 'ok');
+
+    // 폼 리셋
+    selectedFile = null; $file.value = '';
+    $drop.classList.remove('has'); $drop.textContent = '여기로 이미지를 끌어다 놓거나 클릭해서 선택';
+    $previewWrap.style.display = 'none'; $link.value = '';
+    loadList();
+  } catch(e){
+    setStatus(e.message, 'err');
+  } finally {
+    $upload.disabled = false;
+  }
+});
+
+function setStatus(t, cls){ $status.textContent = t; $status.className = 'status ' + (cls || ''); }
+
+document.getElementById('copyBtn').addEventListener('click', () => {
+  navigator.clipboard.writeText($embed.textContent).then(() => {
+    document.getElementById('copyBtn').textContent = '복사됨!';
+    setTimeout(() => document.getElementById('copyBtn').textContent = 'URL 복사', 1500);
+  });
+});
+
+/* ===== 위젯 목록 ===== */
+const $list = document.getElementById('widgetList');
+async function loadList(){
+  if(!getToken()){ $list.innerHTML = '<div class="empty">토큰 저장 후 목록이 표시됩니다.</div>'; return; }
+  $list.innerHTML = '<div class="empty">불러오는 중…</div>';
+  try {
+    const { data } = await loadWidgetsJson();
+    const ids = Object.keys(data.widgets || {});
+    if(ids.length === 0){ $list.innerHTML = '<div class="empty">아직 만든 위젯이 없어요.</div>'; return; }
+    $list.innerHTML = '';
+    ids.reverse().forEach(id => {
+      const w = data.widgets[id];
+      const embedUrl = `${PAGES}/index.html?id=${id}`;
+      const row = document.createElement('div');
+      row.className = 'widget-item';
+      row.innerHTML = `
+        <img src="${PAGES}/${w.image}" alt="">
+        <div class="info">
+          <div class="wid">${id}</div>
+          <div class="wlink">${w.link || '(링크 없음)'}</div>
+        </div>
+        <div class="acts">
+          <button class="btn-copy">복사</button>
+          <button class="btn-del">삭제</button>
+        </div>`;
+      row.querySelector('.btn-copy').addEventListener('click', () => {
+        navigator.clipboard.writeText(embedUrl);
+        row.querySelector('.btn-copy').textContent = '됨!';
+        setTimeout(() => row.querySelector('.btn-copy').textContent = '복사', 1200);
+      });
+      row.querySelector('.btn-del').addEventListener('click', () => deleteWidget(id, w.image));
+      $list.appendChild(row);
+    });
+  } catch(e){
+    $list.innerHTML = '<div class="empty">목록 로드 실패: ' + e.message + '</div>';
+  }
+}
+
+async function deleteWidget(id, imgPath){
+  if(!confirm(`위젯 ${id} 을(를) 삭제할까요?\n(노션에 임베드된 것도 안 나오게 됩니다)`)) return;
+  try {
+    // widgets.json에서 제거
+    const { data, sha } = await loadWidgetsJson();
+    delete data.widgets[id];
+    await ghPut('widgets.json', utf8ToB64(JSON.stringify(data, null, 2)), `delete widget ${id}`, sha);
+    // 이미지 파일 삭제 (실패해도 무시)
+    try {
+      const imgFile = await ghGetFile(imgPath);
+      if(imgFile) await ghDelete(imgPath, imgFile.sha, `delete image ${imgPath}`);
+    } catch(_) {}
+    loadList();
+  } catch(e){
+    alert('삭제 실패: ' + e.message);
+  }
+}
+
+loadList();
+</script>
+</body>
+</html>
