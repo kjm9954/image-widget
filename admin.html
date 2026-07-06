@@ -133,6 +133,7 @@
     <div id="previewWrap" style="display:none;">
       <div class="preview-box"><img id="preview" alt=""></div>
       <div class="preview-note">↑ 마우스를 올리면 실제 위젯처럼 확대돼요</div>
+      <div class="preview-note" id="dimInfo"></div>
     </div>
 
     <label for="linkInput">클릭 시 이동할 링크 URL</label>
@@ -145,6 +146,7 @@
       <div style="font-size:12px;font-weight:600;">✅ 노션에 붙여넣을 임베드 URL</div>
       <code id="embedUrl"></code>
       <button class="mini-btn" id="copyBtn">URL 복사</button>
+      <div id="sizeHint" style="font-size:11px;color:#4a6a8a;margin-top:8px;"></div>
     </div>
   </div>
 
@@ -232,6 +234,13 @@ const $previewWrap = document.getElementById('previewWrap');
 const $preview = document.getElementById('preview');
 const $upload = document.getElementById('uploadBtn');
 let selectedFile = null;
+let imgDims = null;   // { w, h }
+const $dimInfo = document.getElementById('dimInfo');
+
+$preview.addEventListener('load', () => {
+  imgDims = { w: $preview.naturalWidth, h: $preview.naturalHeight };
+  $dimInfo.textContent = `원본 크기: ${imgDims.w} × ${imgDims.h} px`;
+});
 
 $drop.addEventListener('click', () => $file.click());
 $file.addEventListener('change', () => { if($file.files[0]) setFile($file.files[0]); });
@@ -282,6 +291,10 @@ $upload.addEventListener('click', async () => {
 
     const embedUrl = `${PAGES}/index.html?id=${id}`;
     $embed.textContent = embedUrl;
+    if(imgDims){
+      document.getElementById('sizeHint').textContent =
+        `💡 노션 임베드 박스를 ${imgDims.w} × ${imgDims.h} 비율(가로:세로 = ${imgDims.w}:${imgDims.h})로 맞추면 여백 없이 이미지에 딱 맞습니다.`;
+    }
     $result.classList.add('show');
     setStatus('✅ 완료! 아래 URL을 노션에 임베드하세요. (Pages 반영까지 최대 1분)', 'ok');
 
