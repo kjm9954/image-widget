@@ -112,7 +112,11 @@
   <div id="modal">
     <div class="modal-box">
       <h3>링크 URL 변경</h3>
-      <input id="urlInput" type="text" placeholder="https://example.com" autocomplete="off">
+      <input id="urlInput" type="text" placeholder="https://example.com (비우면 hover만)" autocomplete="off">
+      <div id="tokenBlock" style="display:none; margin-top:8px;">
+        <div style="font-size:11px; color:#c47a2a; margin-bottom:4px;">저장하려면 GitHub 토큰이 필요해요 (repo 권한 · 이 브라우저에만 저장)</div>
+        <input id="tokenInput" type="password" placeholder="GitHub Personal Access Token" autocomplete="off">
+      </div>
       <div class="modal-hint" id="modalHint"></div>
       <div class="modal-actions">
         <button class="btn-cancel" id="btnCancel">취소</button>
@@ -143,12 +147,26 @@ const $modal= document.getElementById('modal');
 const $url  = document.getElementById('urlInput');
 const $hint = document.getElementById('modalHint');
 const $save = document.getElementById('btnSave');
+const $tokenBlock = document.getElementById('tokenBlock');
+const $token = document.getElementById('tokenInput');
 
 /* ===== 유틸 ===== */
 function b64ToUtf8(b64){ return decodeURIComponent(escape(atob(b64.replace(/\n/g,'')))); }
 function utf8ToB64(str){ return btoa(unescape(encodeURIComponent(str))); }
-function getToken(){ return localStorage.getItem('gh_pat') || ''; }
-function setToken(t){ localStorage.setItem('gh_pat', t); }
+// 노션 iframe 등에서 localStorage가 막힐 수 있어 세션 메모리로 폴백
+let memToken = '';
+function getToken(){
+  try { return localStorage.getItem('gh_pat') || memToken || ''; }
+  catch(e){ return memToken || ''; }
+}
+function setToken(t){
+  memToken = t;
+  try { localStorage.setItem('gh_pat', t); } catch(e){ /* 서드파티 저장소 차단 시 무시 */ }
+}
+function clearToken(){
+  memToken = '';
+  try { localStorage.removeItem('gh_pat'); } catch(e){}
+}
 function authHeaders(){
   return { 'Authorization': 'token ' + getToken(), 'Accept': 'application/vnd.github+json' };
 }
@@ -211,6 +229,8 @@ function openModal(){
   $hint.textContent = '';
   $hint.style.color = '#999';
   $save.disabled = false;
+  $tokenBlock.style.display = getToken() ? 'none' : 'block';
+  $token.value = '';
   $modal.classList.add('show');
   $url.focus();
 }
@@ -222,14 +242,19 @@ $modal.addEventListener('click', (e) => { if(e.target === $modal) closeModal(); 
 $save.addEventListener('click', saveLink);
 
 async function saveLink(){
-  const newLink = $url.value.trim();
-  if(!newLink){ $hint.style.color='#e05a5a'; $hint.textContent='URL을 입력하세요.'; return; }
+  const newLink = $url.value.trim();   // 비워두면 hover만 (링크 제거)
 
-  // 토큰 확인
+  // 토큰 확인 — 노션 iframe에서는 prompt()가 막히므로 모달 안 입력칸으로 받음
   if(!getToken()){
-    const t = prompt('GitHub Personal Access Token을 입력하세요.\n(repo 권한 필요, 이 기기에만 저장됩니다)');
-    if(!t){ return; }
-    setToken(t.trim());
+    const t = $token.value.trim();
+    if(!t){
+      $tokenBlock.style.display = 'block';
+      $hint.style.color = '#e05a5a';
+      $hint.textContent = '저장하려면 토큰을 입력하세요.';
+      $token.focus();
+      return;
+    }
+    setToken(t);
   }
 
   $save.disabled = true;
@@ -239,7 +264,7 @@ async function saveLink(){
   try {
     // 최신 widgets.json + sha 조회 (API)
     const getRes = await fetch(`${API}/repos/${OWNER}/${REPO}/contents/widgets.json?ref=${BRANCH}`, { headers: authHeaders() });
-    if(getRes.status === 401){ localStorage.removeItem('gh_pat'); throw new Error('토큰이 유효하지 않습니다. 다시 시도하세요.'); }
+    if(getRes.status === 401){ clearToken(); throw new Error('토큰이 유효하지 않습니다. 다시 시도하세요.'); }
     if(!getRes.ok) throw new Error('조회 실패 ' + getRes.status);
     const cur = await getRes.json();
     const data = JSON.parse(b64ToUtf8(cur.content));
@@ -260,6 +285,7 @@ async function saveLink(){
     if(!putRes.ok){ const t = await putRes.text(); throw new Error('저장 실패 ' + putRes.status + ' ' + t); }
 
     widgetData.link = newLink;
+    $img.style.cursor = newLink ? 'pointer' : 'default';
     $hint.style.color = '#3aa76d';
     $hint.textContent = '저장 완료! 반영까지 최대 1분 걸릴 수 있어요.';
     setTimeout(() => { closeModal(); $gear.classList.remove('show'); }, 1400);
@@ -267,6 +293,7 @@ async function saveLink(){
     $hint.style.color = '#e05a5a';
     $hint.textContent = e.message;
     $save.disabled = false;
+    if(!getToken()){ $tokenBlock.style.display = 'block'; $token.value = ''; }
   }
 }
 
