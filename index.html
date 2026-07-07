@@ -173,6 +173,8 @@ function renderImage(){
   $img.src = widgetData.image + '?v=' + Date.now();
   $img.style.display = 'block';
   $img.classList.add('hoverable');
+  // 링크가 있을 때만 클릭 커서(손가락) 표시
+  $img.style.cursor = widgetData.link ? 'pointer' : 'default';
 }
 
 function showMsg(t){

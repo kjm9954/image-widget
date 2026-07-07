@@ -136,8 +136,8 @@
       <div class="preview-note" id="dimInfo"></div>
     </div>
 
-    <label for="linkInput">클릭 시 이동할 링크 URL</label>
-    <input id="linkInput" type="url" placeholder="https://example.com">
+    <label for="linkInput">클릭 시 이동할 링크 URL <span style="color:#aaa;">(선택 · 비우면 hover만)</span></label>
+    <input id="linkInput" type="url" placeholder="https://example.com (안 넣어도 됨)">
 
     <button class="primary" id="uploadBtn" disabled>GitHub에 올리기</button>
     <div class="status" id="status"></div>
@@ -270,8 +270,7 @@ const $link = document.getElementById('linkInput');
 $upload.addEventListener('click', async () => {
   if(!getToken()){ setStatus('먼저 GitHub 토큰을 저장하세요.', 'err'); return; }
   if(!selectedFile){ setStatus('이미지를 선택하세요.', 'err'); return; }
-  const link = $link.value.trim();
-  if(!link){ setStatus('링크 URL을 입력하세요.', 'err'); return; }
+  const link = $link.value.trim();   // 비워두면 hover만, 클릭 시 이동 없음
 
   $upload.disabled = true;
   setStatus('업로드 중… (이미지 → widgets.json 순서로 커밋)', '');
