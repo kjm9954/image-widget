@@ -201,10 +201,17 @@ function showMsg(t){
   $img.style.display = 'none';
 }
 
-/* ===== 클릭: 링크 이동 ===== */
+/* ===== 클릭: 링크 이동 (현재 탭/노션 페이지를 지정 URL로 이동) ===== */
 $img.addEventListener('click', () => {
   const link = widgetData && widgetData.link;
-  if(link) window.open(link, '_blank', 'noopener');
+  if(!link) return;
+  try {
+    // 최상위 프레임(노션 페이지)을 그대로 지정 URL로 이동
+    window.top.location.href = link;
+  } catch(e) {
+    // 노션이 iframe 상위 이동을 막은 경우 → 새 탭으로 대체
+    window.open(link, '_blank', 'noopener');
+  }
 });
 
 /* ===== 숨김 설정 버튼 로직 ===== */
