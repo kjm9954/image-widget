@@ -203,9 +203,25 @@ function renderImage(){
 }
 
 /* 진짜 앵커(target=_top)로 이동 처리 — JS 이동은 노션 모바일 웹뷰에서 막힘 */
+function isMobile(){
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+}
+/* 모바일에서 노션 링크는 notion:// 딥링크로 변환 —
+   임베드 웹뷰는 비로그인 상태라 웹으로 열면 로그인 화면에서 무한 로딩됨.
+   딥링크는 노션 앱이 직접 받아서 해당 페이지를 앱 안에서 엶 */
+function toMobileHref(link){
+  try {
+    const u = new URL(link);
+    if(/(^|\.)notion\.(so|com|site)$/.test(u.hostname)){
+      const m = link.match(/[0-9a-f]{32}/i);
+      if(m) return 'notion://www.notion.so/' + m[0];
+    }
+  } catch(e){}
+  return link;
+}
 function applyLink(link){
   if(link){
-    $wrap.setAttribute('href', link);
+    $wrap.setAttribute('href', isMobile() ? toMobileHref(link) : link);
     $img.style.cursor = 'pointer';
   } else {
     $wrap.removeAttribute('href');
