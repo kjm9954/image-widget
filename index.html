@@ -211,10 +211,30 @@ function isMobile(){
   return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
     || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
 }
+/* 노션 링크 → notion:// 딥링크 (페이지ID 32자리 추출) */
+function toDeepLink(link){
+  try {
+    const u = new URL(link);
+    if(/(^|\.)notion\.(so|com|site)$/.test(u.hostname)){
+      const m = link.match(/[0-9a-f]{32}/i);
+      if(m) return 'notion://www.notion.so/' + m[0];
+    }
+  } catch(e){}
+  return null;
+}
 function applyLink(link){
   if(link){
-    $wrap.setAttribute('href', link);
-    $wrap.setAttribute('target', isMobile() ? '_blank' : '_top');
+    const deep = isMobile() ? toDeepLink(link) : null;
+    if(deep){
+      // 모바일+노션 링크: 사용자가 직접 탭하는 진짜 앵커의 딥링크는
+      // 웹뷰가 OS로 넘겨줘서 브라우저 경유 없이 노션 앱이 바로 열림
+      $wrap.setAttribute('href', deep);
+      $wrap.removeAttribute('target');
+    } else {
+      $wrap.setAttribute('href', link);
+      // 데스크톱: 현재 탭 이동 / 모바일 일반 링크: 바깥 브라우저
+      $wrap.setAttribute('target', isMobile() ? '_blank' : '_top');
+    }
     $wrap.setAttribute('rel', 'noopener');
     $img.style.cursor = 'pointer';
   } else {
