@@ -18,6 +18,13 @@
     position: relative;
   }
 
+  /* 링크 래퍼: 레이아웃에 영향 없이 이미지 전체를 감쌈 */
+  #linkWrap {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
   /* 위젯 이미지 */
   #widgetImg {
     width: 100%;
@@ -104,7 +111,7 @@
 <body>
   <div id="stage">
     <div id="msg">불러오는 중…</div>
-    <img id="widgetImg" alt="" style="display:none;">
+    <a id="linkWrap" target="_top"><img id="widgetImg" alt="" style="display:none;"></a>
     <div id="hotspot" title="설정"></div>
     <button id="gearBtn" title="설정">⚙</button>
   </div>
@@ -140,6 +147,7 @@ let allData = null;      // widgets.json 전체
 let jsonSha = null;      // 저장 시 사용할 sha
 
 const $img  = document.getElementById('widgetImg');
+const $wrap = document.getElementById('linkWrap');
 const $msg  = document.getElementById('msg');
 const $gear = document.getElementById('gearBtn');
 const $hot  = document.getElementById('hotspot');
@@ -191,8 +199,18 @@ function renderImage(){
   $img.src = widgetData.image + '?v=' + Date.now();
   $img.style.display = 'block';
   $img.classList.add('hoverable');
-  // 링크가 있을 때만 클릭 커서(손가락) 표시
-  $img.style.cursor = widgetData.link ? 'pointer' : 'default';
+  applyLink(widgetData.link);
+}
+
+/* 진짜 앵커(target=_top)로 이동 처리 — JS 이동은 노션 모바일 웹뷰에서 막힘 */
+function applyLink(link){
+  if(link){
+    $wrap.setAttribute('href', link);
+    $img.style.cursor = 'pointer';
+  } else {
+    $wrap.removeAttribute('href');
+    $img.style.cursor = 'default';
+  }
 }
 
 function showMsg(t){
@@ -200,19 +218,6 @@ function showMsg(t){
   $msg.style.display = 'block';
   $img.style.display = 'none';
 }
-
-/* ===== 클릭: 링크 이동 (현재 탭/노션 페이지를 지정 URL로 이동) ===== */
-$img.addEventListener('click', () => {
-  const link = widgetData && widgetData.link;
-  if(!link) return;
-  try {
-    // 최상위 프레임(노션 페이지)을 그대로 지정 URL로 이동
-    window.top.location.href = link;
-  } catch(e) {
-    // 노션이 iframe 상위 이동을 막은 경우 → 새 탭으로 대체
-    window.open(link, '_blank', 'noopener');
-  }
-});
 
 /* ===== 숨김 설정 버튼 로직 ===== */
 $hot.addEventListener('click', (e) => {
@@ -292,7 +297,7 @@ async function saveLink(){
     if(!putRes.ok){ const t = await putRes.text(); throw new Error('저장 실패 ' + putRes.status + ' ' + t); }
 
     widgetData.link = newLink;
-    $img.style.cursor = newLink ? 'pointer' : 'default';
+    applyLink(newLink);
     $hint.style.color = '#3aa76d';
     $hint.textContent = '저장 완료! 반영까지 최대 1분 걸릴 수 있어요.';
     setTimeout(() => { closeModal(); $gear.classList.remove('show'); }, 1400);
