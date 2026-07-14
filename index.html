@@ -204,12 +204,14 @@ function renderImage(){
 
 /* 진짜 앵커(target=_top)로 이동 처리 — JS 이동은 노션 모바일 웹뷰에서 막힘 */
 function isMobile(){
-  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  // iPad 데스크톱 모드(UA가 Macintosh로 나옴)까지 포함
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.maxTouchPoints > 1 && /Mac/.test(navigator.userAgent));
 }
-/* 모바일에서 노션 링크는 notion:// 딥링크로 변환 —
+/* 노션 링크 → notion:// 딥링크 —
    임베드 웹뷰는 비로그인 상태라 웹으로 열면 로그인 화면에서 무한 로딩됨.
    딥링크는 노션 앱이 직접 받아서 해당 페이지를 앱 안에서 엶 */
-function toMobileHref(link){
+function toDeepLink(link){
   try {
     const u = new URL(link);
     if(/(^|\.)notion\.(so|com|site)$/.test(u.hostname)){
@@ -221,13 +223,30 @@ function toMobileHref(link){
 }
 function applyLink(link){
   if(link){
-    $wrap.setAttribute('href', isMobile() ? toMobileHref(link) : link);
+    $wrap.setAttribute('href', link);
     $img.style.cursor = 'pointer';
   } else {
     $wrap.removeAttribute('href');
     $img.style.cursor = 'default';
   }
 }
+
+/* 모바일: 클릭 시 딥링크를 먼저 시도하고, 노션 앱이 안 열리면(페이지가 그대로 보이면) 웹으로 폴백 */
+$wrap.addEventListener('click', (e) => {
+  const link = widgetData && widgetData.link;
+  if(!link || !isMobile()) return;          // 데스크톱은 앵커 기본 동작(_top)
+  const deep = toDeepLink(link);
+  if(deep === link) return;                 // 노션 링크가 아니면 기본 동작
+  e.preventDefault();
+  location.href = deep;                     // 노션 앱 호출
+  setTimeout(() => {
+    // 앱이 열렸으면 이 페이지는 백그라운드(hidden) → 폴백 안 함
+    if(!document.hidden){
+      try { window.top.location.href = link; }
+      catch(_){ window.open(link, '_blank', 'noopener'); }
+    }
+  }, 1800);
+});
 
 function showMsg(t){
   $msg.textContent = t;
